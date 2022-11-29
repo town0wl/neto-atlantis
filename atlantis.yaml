@@ -1,0 +1,34 @@
+# repos lists the config for specific repos.
+repos:
+- id: /.*/
+  branch: /.*/
+
+  # apply_requirements sets the Apply Requirements for all repos that match.
+  apply_requirements: [approved, mergeable]
+
+  # workflow sets the workflow for all repos that match.
+  # This workflow must be defined in the workflows section.
+  workflow: custom
+
+  # allowed_overrides specifies which keys can be overridden by this repo in
+  # its atlantis.yaml file.
+  allowed_overrides: [apply_requirements, workflow, delete_source_branch_on_merge]
+
+  # allowed_workflows specifies which workflows the repos that match 
+  # are allowed to select.
+  allowed_workflows: [custom]
+
+  # allow_custom_workflows defines whether this repo can define its own
+  # workflows. If false (default), the repo can only use server-side defined
+  # workflows.
+  allow_custom_workflows: true
+
+workflows:
+  custom:
+    plan:
+      steps:
+      - run: rm -rf .terraform
+      - init:
+          extra_args: [-backend-config=/etc/atlantis/backend.conf]
+      - plan:
+          extra_args: [-var-file=/etc/atlantis/atlantis.tfvars]

@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: atlantis
+spec:
+  serviceName: atlantis
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0
+  selector:
+    matchLabels:
+      app: atlantis
+  template:
+    metadata:
+      labels:
+        app: atlantis
+    spec:
+      securityContext:
+        fsGroup: 1000 # Atlantis group (1000) read/write access to volumes.
+      volumes:
+      - name: configs
+        secret:
+          secretName: atlantis-configs-secret
+      containers:
+      - name: atlantis
+        image: ghcr.io/runatlantis/atlantis:v0.20.1 # 1. Replace <VERSION> with the most recent release.
+        env:
+        - name: TF_CLI_CONFIG_FILE
+          value: /etc/atlantis/yandex.tfrc
+        - name: ATLANTIS_REPO_CONFIG
+          value: /etc/atlantis/atlantis.yaml
+        - name: ATLANTIS_REPO_ALLOWLIST
+          value: github.com/town0wl/neto-terraform # 2. Replace this with your own repo allowlist.
+
+        ### GitHub Config ###
+        - name: ATLANTIS_GH_USER
+          value: atlantis # 3i. If you're using GitHub replace <YOUR_GITHUB_USER> with the username of your Atlantis GitHub user without the `@`.
+        - name: ATLANTIS_GH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: atlantis-vcs
+              key: token
+        - name: ATLANTIS_GH_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: atlantis-vcs
+              key: webhook-secret
+        ### End GitHub Config ###
+
+        - name: ATLANTIS_PORT
+          value: "4141" # Kubernetes sets an ATLANTIS_PORT variable so we need to override.
+        volumeMounts:
+        - name: configs
+          readOnly: true
+          mountPath: "/etc/atlantis"
+        ports:
+        - name: atlantis
+          containerPort: 4141
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 100m
+          limits:
+            memory: 256Mi
+            cpu: 100m
+        livenessProbe:
+          # We only need to check every 60s since Atlantis is not a
+          # high-throughput service.
+          periodSeconds: 60
+          httpGet:
+            path: /healthz
+            port: 4141
+            # If using https, change this to HTTPS
+            scheme: HTTP
+        readinessProbe:
+          periodSeconds: 60
+          httpGet:
+            path: /healthz
+            port: 4141
+            # If using https, change this to HTTPS
+            scheme: HTTP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: atlantis
+spec:
+  type: NodePort
+  ports:
+  - name: atlantis
+    port: 80
+    targetPort: 4141
+    nodePort: 30041
+  selector:
+    app: atlantis
